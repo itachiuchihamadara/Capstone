@@ -1,6 +1,10 @@
-from dataclasses import asdict
+import time
+import sys
+from pathlib import Path
 
-import gradio as gr
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+import streamlit as st
 from dotenv import load_dotenv
 
 from src.agents.contracts import AgentResponse, UiComponent
@@ -9,6 +13,8 @@ from src.config.settings import FAST_MODEL
 from src.tools.order_tools import cancel_existing_order
 
 load_dotenv()
+
+st.set_page_config(page_title="eComBot v7", layout="wide")
 
 APP_CSS = """
 .shell {
@@ -70,6 +76,7 @@ APP_CSS = """
   font-size: 12px;
 }
 """
+st.markdown(f"<style>{APP_CSS}</style>", unsafe_allow_html=True)
 
 
 def _status_class(status: str) -> str:
@@ -164,112 +171,102 @@ def _empty_state() -> tuple[str, str, str, str, dict]:
         "<div class='panel'><strong>Routing Trace</strong><p>The orchestrator trace will appear after the first message.</p></div>",
         "<div class='panel'><strong>RAG Sources</strong><p>Sources will appear here when used.</p></div>",
         _render_model_badge(FAST_MODEL),
-        {},
     )
 
 
-def stream_response(message: str, history: list[tuple[str, str]] | None, response_state: dict | None):
-    history = history or []
-    if not message.strip():
-        cards_html, trace_html, sources_html, badge_html, state = _empty_state()
-        yield "", history, cards_html, trace_html, sources_html, badge_html, state
-        return
+# --- Streamlit UI Setup ---
 
-    response = process_user_message(message)
-    response_dict = asdict(response)
-    cards_html = _render_cards(response)
-    trace_html = _render_trace(response)
-    sources_html = _render_sources(response.sources)
-    badge_html = _render_model_badge(response.model)
+st.markdown(
+    """
+    <div class='shell'>
+      <h1 style='margin-bottom:8px'>eComBot v7</h1>
+      <p style='margin-top:0'>Planner-executor orchestration with Support and Sales agents, plus structured UI cards and streaming responses.</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-    chunk_size = 18
-    for stop in range(chunk_size, len(response.answer) + chunk_size, chunk_size):
-        partial_answer = response.answer[:stop]
-        updated_history = history + [(message, partial_answer)]
-        yield "", updated_history, cards_html, trace_html, sources_html, badge_html, response_dict
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "last_response" not in st.session_state:
+    st.session_state.last_response = None
 
+col_chat, col_panels = st.columns([3, 2])
 
-def cancel_last_order(history: list[tuple[str, str]] | None, response_state: dict | None):
-    history = history or []
-    response_state = response_state or {}
-    order_id = response_state.get("metadata", {}).get("order_id")
-    if not order_id:
-        cards_html, trace_html, sources_html, badge_html, state = _empty_state()
-        updated_history = history + [("Cancel last order", "There is no active order card to cancel yet.")]
-        return updated_history, cards_html, trace_html, sources_html, badge_html, state
-
-    cancellation = cancel_existing_order(order_id)
-    updated_order = cancellation.get("data") or {"order_id": order_id, "status": "Unknown", "eta": "N/A", "items": []}
-    response = AgentResponse(
-        agent_name="Support Agent",
-        intent="order_cancellation",
-        answer=cancellation["message"],
-        model=FAST_MODEL,
-        planner_reason="The UI cancel action executes a direct Support workflow on the currently displayed order.",
-        planner_steps=[],
-        components=[UiComponent("order_card", updated_order)],
-        sources=["Orders DB"],
-        metadata={"order_id": order_id},
-    )
-    cards_html = _render_cards(response)
-    trace_html = _render_trace(response)
-    sources_html = _render_sources(response.sources)
-    badge_html = _render_model_badge(response.model)
-    updated_history = history + [("Cancel last order", response.answer)]
-    return updated_history, cards_html, trace_html, sources_html, badge_html, asdict(response)
-
-
-def clear_ui():
-    cards_html, trace_html, sources_html, badge_html, state = _empty_state()
-    return [], cards_html, trace_html, sources_html, badge_html, state
-
-
-def build_app() -> gr.Blocks:
-    cards_html, trace_html, sources_html, badge_html, response_state = _empty_state()
-    with gr.Blocks(title="eComBot v7") as demo:
-        gr.HTML(f"<style>{APP_CSS}</style>")
-        gr.Markdown(
-            """
-            <div class='shell'>
-              <h1 style='margin-bottom:8px'>eComBot v7</h1>
-              <p style='margin-top:0'>Planner-executor orchestration with Support and Sales agents, plus structured UI cards and streaming responses.</p>
-            </div>
-            """
-        )
-        with gr.Row(equal_height=True):
-            with gr.Column(scale=3):
-                chatbot = gr.Chatbot(label="Conversation", height=520)
-                message = gr.Textbox(
-                    label="Ask eComBot",
-                    placeholder="Try: Where is my order ORD-001? or What phone should I buy under 18000?",
+with col_chat:
+    chat_container = st.container(height=520)
+    
+    col_btns = st.columns([1, 1, 4])
+    with col_btns[0]:
+        if st.button("Cancel last order"):
+            order_id = st.session_state.last_response.metadata.get("order_id") if st.session_state.last_response else None
+            if not order_id:
+                st.session_state.messages.append({"role": "user", "content": "Cancel last order"})
+                st.session_state.messages.append({"role": "assistant", "content": "There is no active order card to cancel yet."})
+                st.session_state.last_response = None
+            else:
+                cancellation = cancel_existing_order(order_id)
+                updated_order = cancellation.get("data") or {"order_id": order_id, "status": "Unknown", "eta": "N/A", "items": []}
+                response = AgentResponse(
+                    agent_name="Support Agent",
+                    intent="order_cancellation",
+                    answer=cancellation["message"],
+                    model=FAST_MODEL,
+                    planner_reason="The UI cancel action executes a direct Support workflow on the currently displayed order.",
+                    planner_steps=[],
+                    components=[UiComponent("order_card", updated_order)],
+                    sources=["Orders DB"],
+                    metadata={"order_id": order_id},
                 )
-                with gr.Row():
-                    cancel_button = gr.Button("Cancel last order", variant="secondary")
-                    clear_button = gr.Button("Clear", variant="secondary")
-            with gr.Column(scale=2):
-                cards = gr.HTML(value=cards_html)
-                routing_trace = gr.HTML(value=trace_html)
-                source_tags = gr.HTML(value=sources_html)
-                model_badge = gr.HTML(value=badge_html)
+                st.session_state.last_response = response
+                st.session_state.messages.append({"role": "user", "content": "Cancel last order"})
+                st.session_state.messages.append({"role": "assistant", "content": response.answer})
+            st.rerun()
+                
+    with col_btns[1]:
+        if st.button("Clear"):
+            st.session_state.messages = []
+            st.session_state.last_response = None
+            st.rerun()
 
-        state = gr.State(value=response_state)
+    prompt = st.chat_input("Try: Where is my order ORD-001? or What phone should I buy under 18000?")
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
 
-        message.submit(
-            fn=stream_response,
-            inputs=[message, chatbot, state],
-            outputs=[message, chatbot, cards, routing_trace, source_tags, model_badge, state],
-        )
-        cancel_button.click(
-            fn=cancel_last_order,
-            inputs=[chatbot, state],
-            outputs=[chatbot, cards, routing_trace, source_tags, model_badge, state],
-        )
-        clear_button.click(
-            fn=clear_ui,
-            outputs=[chatbot, cards, routing_trace, source_tags, model_badge, state],
-        )
-    return demo
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
+        if prompt:
+            with st.chat_message("assistant"):
+                message_placeholder = st.empty()
+                response = process_user_message(prompt)
+                
+                full_response = ""
+                chunk_size = 18
+                for stop in range(chunk_size, len(response.answer) + chunk_size, chunk_size):
+                    full_response = response.answer[:stop]
+                    message_placeholder.markdown(full_response + "▌")
+                    time.sleep(0.02)
+                
+                full_response = response.answer
+                message_placeholder.markdown(full_response)
+            
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.session_state.last_response = response
+            st.rerun()
 
-if __name__ == "__main__":
-    build_app().launch()
+with col_panels:
+    if st.session_state.last_response:
+        response = st.session_state.last_response
+        st.markdown(_render_cards(response), unsafe_allow_html=True)
+        st.markdown(_render_trace(response), unsafe_allow_html=True)
+        st.markdown(_render_sources(response.sources), unsafe_allow_html=True)
+        st.markdown(_render_model_badge(response.model), unsafe_allow_html=True)
+    else:
+        cards_html, trace_html, sources_html, badge_html = _empty_state()
+        st.markdown(cards_html, unsafe_allow_html=True)
+        st.markdown(trace_html, unsafe_allow_html=True)
+        st.markdown(sources_html, unsafe_allow_html=True)
+        st.markdown(badge_html, unsafe_allow_html=True)

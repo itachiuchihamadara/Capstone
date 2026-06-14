@@ -12,3 +12,4 @@ langsmith
 pytest
 python-dotenv
 pydantic
+streamlit
