@@ -1,0 +1,26 @@
+[
+  {
+    "id": "prod_1",
+    "name": "Samsung Galaxy A55",
+    "category": "Smartphone",
+    "price": 18500,
+    "specs": "6.6 inch AMOLED, 120Hz, 8GB RAM, 128GB Storage, 50MP Camera",
+    "warranty": "1 Year Manufacturer Warranty"
+  },
+  {
+    "id": "prod_2",
+    "name": "Redmi Note 13",
+    "category": "Smartphone",
+    "price": 16000,
+    "specs": "6.67 inch AMOLED, 120Hz, 8GB RAM, 256GB Storage, 108MP Camera",
+    "warranty": "1 Year Manufacturer Warranty"
+  },
+  {
+    "id": "prod_3",
+    "name": "Samsung TV Decoder Pro",
+    "category": "Accessory",
+    "price": 3500,
+    "specs": "4K Output, HDMI 2.1, 1GB RAM",
+    "warranty": "6 Months Manufacturer Warranty"
+  }
+]

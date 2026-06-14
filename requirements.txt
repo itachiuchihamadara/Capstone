@@ -1,0 +1,14 @@
+google-adk
+redis
+chromadb
+sentence-transformers
+litellm
+mcp
+gradio
+faster-whisper
+livekit-agents
+livekit-plugins-silero
+langsmith
+pytest
+python-dotenv
+pydantic
