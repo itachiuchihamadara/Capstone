@@ -61,11 +61,16 @@ def _shortlist_products(query: str) -> list[dict]:
     return list_products_by_category("Smartphone")
 
 
-def handle_sales_request(query: str) -> AgentResponse:
+def handle_sales_request(query: str, context: str | None = None) -> AgentResponse:
     budget = _extract_budget(query)
     planner_steps = [
         PlannerStep("Identify shopping goal", "Parsed the request for product intent, comparison needs, and budget."),
     ]
+
+    if context:
+        planner_steps.append(
+            PlannerStep("Incorporate support context", "Used the upstream support result to shape the recommendation response.")
+        )
 
     shortlist = _shortlist_products(query)
     if budget is not None:
@@ -95,6 +100,8 @@ def handle_sales_request(query: str) -> AgentResponse:
         f"I would recommend the {recommended['name']}.",
         f"It is priced at {recommended['price']} and offers {recommended['specs']}.",
     ]
+    if context:
+        answer_lines.insert(0, f"Based on the support update, {context}")
     if budget is not None:
         answer_lines.append(f"This recommendation stays within your stated budget of {budget}.")
     if alternative:
